@@ -52,7 +52,7 @@ func findDivisors(wg *sync.WaitGroup, moduli []big.Int, i int, gcd *big.Int, col
 		n := &moduli[j]
 		if n.Cmp(m) == 0 {
 			collisions <- Collision{Modulus: m}
-		} else if q.Mod(n, gcd).BitLen() == 0 {
+		} else if q.Rem(n, gcd).BitLen() == 0 {
 			q.Quo(n, gcd)
 			collisions <- Collision{
 				Modulus: n,

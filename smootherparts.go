@@ -23,7 +23,7 @@ func remainderTreeLevel(tree [][]big.Int, level int, wg *sync.WaitGroup, start, 
 		x := &thisLevel[i]
 		y := &prevLevel[i/2]
 		tmp.Mul(x, x)
-		x.Mod(y, tmp)
+		x.Rem(y, tmp)
 	}
 	wg.Done()
 }
@@ -35,7 +35,7 @@ func remainderTreeFinal(lastLevel, moduli []big.Int, output chan<- Collision, wg
 		modulus := &moduli[i]
 		y := &lastLevel[i/2]
 		tmp.Mul(modulus, modulus)
-		tmp.Mod(y, tmp)
+		tmp.Rem(y, tmp)
 		tmp.Quo(tmp, modulus)
 		if tmp.GCD(nil, nil, tmp, modulus).BitLen() != 1 {
 			q := &big.Int{}
