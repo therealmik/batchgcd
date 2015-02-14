@@ -40,6 +40,7 @@ func MulAccumGCD(moduli []big.Int, collisions chan<- Collision) {
 func findDivisors(wg *sync.WaitGroup, moduli []big.Int, i int, gcd *big.Int, collisions chan<- Collision) {
 	m := &moduli[i]
 	q := new(big.Int)
+	r := new(big.Int)
 
 	q.Quo(m, gcd)
 	collisions <- Collision{
@@ -51,20 +52,15 @@ func findDivisors(wg *sync.WaitGroup, moduli []big.Int, i int, gcd *big.Int, col
 
 	for j := 0; j < i; j++ {
 		n := &moduli[j]
-		if n.Cmp(m) == 0 {
-			collisions <- Collision{Modulus: m}
-		} else {
-			r := new(big.Int)
-			q.QuoRem(n, gcd, r)
-			if r.BitLen() == 0 {
-				collisions <- Collision{
-					Modulus: n,
-					P:       gcd,
-					Q:       q,
-				}
+		q.QuoRem(n, gcd, r)
+		if r.BitLen() == 0 {
+			collisions <- Collision{
+				Modulus: n,
+				P:       gcd,
+				Q:       q,
 			}
-			q = new(big.Int)
 		}
+		q = new(big.Int)
 	}
 	wg.Done()
 }
@@ -77,9 +73,7 @@ func findGCD(wg *sync.WaitGroup, moduli []big.Int, i int, collisions chan<- Coll
 	for j := 0; j < i; j++ {
 		n := &moduli[j]
 
-		if n.Cmp(m) == 0 {
-			collisions <- Collision{Modulus: m}
-		} else if gcd.GCD(nil, nil, m, n).BitLen() != 1 {
+		if gcd.GCD(nil, nil, m, n).BitLen() != 1 {
 			q.Quo(m, gcd)
 			collisions <- Collision{
 				Modulus: m,
