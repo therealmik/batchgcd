@@ -17,7 +17,7 @@ const (
 )
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
-var algorithmName = flag.String("algorithm", "smootherparts", "mulaccum|pairwise|smootherparts")
+var algorithmName = flag.String("algorithm", "smoothparts", "mulaccum|pairwise|smoothparts")
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -31,8 +31,8 @@ func main() {
 		f = batchgcd.BasicPairwiseGCD
 	case "mulaccum":
 		f = batchgcd.MulAccumGCD
-	case "smootherparts":
-		f = batchgcd.SmootherPartsGCD
+	case "smoothparts":
+		f = batchgcd.SmoothPartsGCD
 	default:
 		log.Fatal("Invalid algorithm: ", *algorithmName)
 	}

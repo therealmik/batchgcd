@@ -56,7 +56,7 @@ func remainderTreeFinal(lastLevel, moduli []big.Int, output chan<- Collision, wg
 
 // Implementation of D.J. Bernstein's "How to find smooth parts of integers"
 // http://cr.yp.to/papers.html#smoothparts
-func SmootherPartsGCD(moduli []big.Int, output chan<- Collision) {
+func SmoothPartsGCD(moduli []big.Int, output chan<- Collision) {
 	defer close(output)
 	if len(moduli) < 2 {
 		return
