@@ -24,7 +24,7 @@ func main() {
 	flag.StringVar(&algorithm, "algorithm", "pairwise", "Algorithm: <mulaccum|pairwise|smootherparts>")
 	flag.Parse()
 
-	var f func([]*big.Int, chan<- batchgcd.Collision)
+	var f func([]big.Int, chan<- batchgcd.Collision)
 
 	switch algorithm {
 	case "pairwise":
@@ -41,7 +41,7 @@ func main() {
 		log.Fatal("No files specified")
 	}
 
-	moduli := make([]*big.Int, 0)
+	moduli := make([]big.Int, 0)
 	for _, filename := range flag.Args() {
 		log.Print("Loading moduli from ", filename)
 		moduli = loadModuli(moduli, filename)
@@ -60,7 +60,7 @@ func main() {
 	log.Print("Finished.")
 }
 
-func loadModuli(moduli []*big.Int, filename string) []*big.Int {
+func loadModuli(moduli []big.Int, filename string) []big.Int {
 	fp, err := os.Open(filename)
 	if err != nil {
 		log.Fatal(err)
@@ -69,7 +69,7 @@ func loadModuli(moduli []*big.Int, filename string) []*big.Int {
 
 	scanner := bufio.NewScanner(fp)
 	for scanner.Scan() {
-		m := big.NewInt(0)
+		m := big.Int{}
 		_, ok := m.SetString(scanner.Text(), MODULI_BASE)
 		if !ok {
 			log.Fatal("Invalid modulus in filename ", filename, ": ", scanner.Text())

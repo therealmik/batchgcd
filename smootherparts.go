@@ -6,61 +6,60 @@ import (
 	"sync"
 )
 
-func productTreeLevel(input []*big.Int, output []*big.Int, wg *sync.WaitGroup, start, step int) {
+func productTreeLevel(input []big.Int, output []big.Int, wg *sync.WaitGroup, start, step int) {
 	for i := start; i < (len(input) / 2); i += step {
 		j := i * 2
-		out := big.NewInt(0)
-		output[i] = out.Mul(input[j], input[j+1])
+		output[i].Mul(&input[j], &input[j+1])
 	}
 	wg.Done()
 }
 
-func remainderTreeLevel(tree [][]*big.Int, level int, wg *sync.WaitGroup, start, step int) {
+func remainderTreeLevel(tree [][]big.Int, level int, wg *sync.WaitGroup, start, step int) {
 	prevLevel := tree[level+1]
 	thisLevel := tree[level]
+	tmp := &big.Int{}
 
 	for i := start; i < len(thisLevel); i += step {
-		x := thisLevel[i]
-		tmp := big.NewInt(0)
-		y := prevLevel[i/2]
+		x := &thisLevel[i]
+		y := &prevLevel[i/2]
 		tmp.Mul(x, x)
 		x.Mod(y, tmp)
 	}
 	wg.Done()
 }
 
-func remainderTreeFinal(lastLevel, moduli []*big.Int, output chan<- Collision, wg *sync.WaitGroup, start, step int) {
-	x := big.NewInt(0)
+func remainderTreeFinal(lastLevel, moduli []big.Int, output chan<- Collision, wg *sync.WaitGroup, start, step int) {
+	tmp := &big.Int{}
+
 	for i := start; i < len(moduli); i += step {
-		modulus := moduli[i]
-		y := lastLevel[i/2]
-		x.Set(modulus)
-		x.Mul(x, x)
-		x.Mod(y, x)
-		x.Quo(x, modulus)
-		if x.GCD(nil, nil, x, modulus).BitLen() != 1 {
-			y := big.NewInt(0)
-			y.Quo(modulus, x)
+		modulus := &moduli[i]
+		y := &lastLevel[i/2]
+		tmp.Mul(modulus, modulus)
+		tmp.Mod(y, tmp)
+		tmp.Quo(tmp, modulus)
+		if tmp.GCD(nil, nil, tmp, modulus).BitLen() != 1 {
+			q := &big.Int{}
+			q.Quo(modulus, tmp)
 			output <- Collision{
 				Modulus: modulus,
-				P:       x,
-				Q:       y,
+				P:       tmp,
+				Q:       q,
 			}
-			x = big.NewInt(0)
+			tmp = &big.Int{}
 		}
 	}
 	wg.Done()
 }
 
-func SmootherPartsGCD(moduli []*big.Int, output chan<- Collision) {
+func SmootherPartsGCD(moduli []big.Int, output chan<- Collision) {
 	defer close(output)
 	if len(moduli) < 2 {
 		return
 	}
 
-	tree := make([][]*big.Int, 0)
+	tree := make([][]big.Int, 0)
 	for n := (len(moduli) + 1) / 2; ; n = (n + 1) / 2 {
-		tree = append(tree, make([]*big.Int, n))
+		tree = append(tree, make([]big.Int, n))
 		if n == 1 {
 			break
 		}
@@ -92,11 +91,6 @@ func SmootherPartsGCD(moduli []*big.Int, output chan<- Collision) {
 			go remainderTreeLevel(tree, level, &wg, i, nThreads)
 		}
 		wg.Wait()
-
-		dbg := make([]int, len(tree[level]))
-		for i := 0; i < len(tree[level]); i++ {
-			dbg[i] = tree[level][i].BitLen()
-		}
 	}
 
 	wg.Add(nThreads)
