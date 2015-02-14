@@ -5,6 +5,11 @@ import (
 	"sync"
 )
 
+type gcdTask struct {
+	accum *big.Int
+	i     int
+}
+
 // This performs the GCD of the product of all previous moduli with the current one.
 // This uses around double the memory (minus quite a lot of overhead), and identifies
 // problematic input in O(n) time, but has to do another O(n) scan for each collision
@@ -14,23 +19,34 @@ import (
 // If we get a GCD lower than the modulus, we have one private key, then do a manual scan for others.
 func MulAccumGCD(moduli []big.Int, collisions chan<- Collision) {
 	accum := big.NewInt(1)
-	gcd := new(big.Int)
-	var wg sync.WaitGroup
+
+	gcdChan := make(chan gcdTask, 256)
+	go gcdProc(gcdChan, moduli, collisions)
 
 	for i := 0; i < len(moduli); i++ {
-		n := &moduli[i]
-		gcd.GCD(nil, nil, accum, n)
-		if gcd.BitLen() != 1 {
-			wg.Add(1)
-			if gcd.Cmp(n) == 0 {
-				go findGCD(&wg, moduli, i, collisions)
-				continue
-			} else {
-				go findDivisors(&wg, moduli, i, gcd, collisions)
-				gcd = new(big.Int)
-			}
+		gcdChan <- gcdTask{accum, i}
+		accum = new(big.Int).Mul(accum, &moduli[i])
+	}
+	close(gcdChan)
+}
+
+func gcdProc(gcdChan <-chan gcdTask, moduli []big.Int, collisions chan<- Collision) {
+	var wg sync.WaitGroup
+	gcd := new(big.Int)
+
+	for task := range gcdChan {
+		modulus := &moduli[task.i]
+		gcd.GCD(nil, nil, task.accum, modulus)
+		if gcd.BitLen() == 1 {
+			continue
 		}
-		accum.Mul(accum, n)
+		wg.Add(1)
+		if gcd.Cmp(modulus) == 0 {
+			go findGCD(&wg, moduli, task.i, collisions)
+		} else {
+			go findDivisors(&wg, moduli, task.i, gcd, collisions)
+			gcd = new(big.Int)
+		}
 	}
 	wg.Wait()
 	close(collisions)
