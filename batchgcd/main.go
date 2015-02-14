@@ -9,24 +9,24 @@ import (
 	"math/big"
 	"os"
 	"runtime"
+	"runtime/pprof"
 )
 
 const (
 	MODULI_BASE = 16 // Hex
 )
 
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+var algorithmName = flag.String("algorithm", "smootherparts", "mulaccum|pairwise|smootherparts")
+
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	log.SetOutput(os.Stderr)
-
-	var algorithm string
-
-	flag.StringVar(&algorithm, "algorithm", "pairwise", "Algorithm: <mulaccum|pairwise|smootherparts>")
 	flag.Parse()
 
 	var f func([]big.Int, chan<- batchgcd.Collision)
 
-	switch algorithm {
+	switch *algorithmName {
 	case "pairwise":
 		f = batchgcd.BasicPairwiseGCD
 	case "mulaccum":
@@ -34,7 +34,7 @@ func main() {
 	case "smootherparts":
 		f = batchgcd.SmootherPartsGCD
 	default:
-		log.Fatal("Invalid algorithm: ", algorithm)
+		log.Fatal("Invalid algorithm: ", *algorithmName)
 	}
 
 	if len(flag.Args()) == 0 {
@@ -47,11 +47,20 @@ func main() {
 		moduli = loadModuli(moduli, filename)
 	}
 
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	ch := make(chan batchgcd.Collision, 256)
 	log.Print("Executing...")
 	go f(moduli, ch)
 
-	for compromised := range ch {
+	for compromised := range uniqifyCollisions(ch) {
 		if !compromised.Test() {
 			log.Fatal("Test failed on ", compromised)
 		}
@@ -67,14 +76,41 @@ func loadModuli(moduli []big.Int, filename string) []big.Int {
 	}
 	defer fp.Close()
 
+	seen := make(map[string]struct{})
 	scanner := bufio.NewScanner(fp)
 	for scanner.Scan() {
 		m := big.Int{}
-		_, ok := m.SetString(scanner.Text(), MODULI_BASE)
-		if !ok {
+		s := scanner.Text()
+
+		// Dedupe
+		if _, ok := seen[s]; ok {
+			continue
+		} else {
+			seen[s] = struct{}{}
+		}
+
+		if _, ok := m.SetString(scanner.Text(), MODULI_BASE); !ok {
 			log.Fatal("Invalid modulus in filename ", filename, ": ", scanner.Text())
 		}
 		moduli = append(moduli, m)
 	}
 	return moduli
+}
+
+func uniqifyCollisions(in <-chan batchgcd.Collision) chan batchgcd.Collision {
+	out := make(chan batchgcd.Collision)
+	go func() {
+		seen := make(map[string]struct{})
+		for c := range in {
+			s := c.String()
+			if _, ok := seen[s]; ok {
+				continue
+			}
+			seen[s] = struct{}{}
+			out <- c
+		}
+		close(out)
+
+	}()
+	return out
 }
