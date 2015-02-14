@@ -49,10 +49,7 @@ func findDivisors(wg *sync.WaitGroup, moduli []big.Int, i int, gcd *big.Int, col
 	}
 	q = new(big.Int)
 
-	for j := 0; j < len(moduli); j++ {
-		if j == i {
-			continue
-		}
+	for j := 0; j < i; j++ {
 		n := &moduli[j]
 		if n.Cmp(m) == 0 {
 			collisions <- Collision{Modulus: m}
@@ -77,10 +74,7 @@ func findGCD(wg *sync.WaitGroup, moduli []big.Int, i int, collisions chan<- Coll
 	q := new(big.Int)
 	gcd := new(big.Int)
 
-	for j := 0; j < len(moduli); j++ {
-		if j == i {
-			break
-		}
+	for j := 0; j < i; j++ {
 		n := &moduli[j]
 
 		if n.Cmp(m) == 0 {
