@@ -19,7 +19,7 @@ func BasicPairwiseGCD(moduli []big.Int, collisions chan<- Collision) {
 }
 
 func pairwiseThread(start, step int, wg *sync.WaitGroup, moduli []big.Int, collisions chan<- Collision) {
-	gcd := &big.Int{}
+	gcd := new(big.Int)
 
 	for i := start; i < len(moduli); i += step {
 		for j := i + 1; j < len(moduli); j++ {
@@ -28,7 +28,7 @@ func pairwiseThread(start, step int, wg *sync.WaitGroup, moduli []big.Int, colli
 			if m1.Cmp(m2) == 0 {
 				collisions <- Collision{Modulus: m1}
 			} else if gcd.GCD(nil, nil, m1, m2).BitLen() != 1 { // There's only one number with a BitLen of 1
-				q := &big.Int{}
+				q := new(big.Int)
 				q.Quo(m1, gcd)
 				collisions <- Collision{
 					Modulus: m1,
@@ -36,7 +36,7 @@ func pairwiseThread(start, step int, wg *sync.WaitGroup, moduli []big.Int, colli
 					Q:       q,
 				}
 
-				q = &big.Int{}
+				q = new(big.Int)
 				q.Quo(m2, gcd)
 				collisions <- Collision{
 					Modulus: m2,
@@ -44,7 +44,7 @@ func pairwiseThread(start, step int, wg *sync.WaitGroup, moduli []big.Int, colli
 					Q:       q,
 				}
 
-				gcd = &big.Int{} // Old gcd var can't be overwritten
+				gcd = new(big.Int) // Old gcd var can't be overwritten
 			}
 		}
 	}

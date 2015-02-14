@@ -31,7 +31,7 @@ func (x Collision) Test() bool {
 	if !x.HavePrivate() {
 		return true
 	}
-	n := &big.Int{}
+	n := new(big.Int)
 	n.Mul(x.P, x.Q)
 	return n.Cmp(x.Modulus) == 0
 }
