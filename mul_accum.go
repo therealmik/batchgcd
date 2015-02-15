@@ -2,6 +2,7 @@ package batchgcd
 
 import (
 	"math/big"
+	"runtime"
 	"sync"
 )
 
@@ -19,19 +20,25 @@ type gcdTask struct {
 // If we get a GCD lower than the modulus, we have one private key, then do a manual scan for others.
 func MulAccumGCD(moduli []big.Int, collisions chan<- Collision) {
 	accum := big.NewInt(1)
+	var wg sync.WaitGroup
+	nThreads := runtime.NumCPU()
 
-	gcdChan := make(chan gcdTask, 256)
-	go gcdProc(gcdChan, moduli, collisions)
+	gcdChan := make(chan gcdTask, nThreads*2)
+	wg.Add(nThreads)
+	for i := 0; i < nThreads; i++ {
+		go gcdProc(gcdChan, moduli, collisions, &wg)
+	}
 
 	for i := 0; i < len(moduli); i++ {
 		gcdChan <- gcdTask{accum, i}
 		accum = new(big.Int).Mul(accum, &moduli[i])
 	}
 	close(gcdChan)
+	wg.Wait()
+	close(collisions)
 }
 
-func gcdProc(gcdChan <-chan gcdTask, moduli []big.Int, collisions chan<- Collision) {
-	var wg sync.WaitGroup
+func gcdProc(gcdChan <-chan gcdTask, moduli []big.Int, collisions chan<- Collision, wg *sync.WaitGroup) {
 	gcd := new(big.Int)
 
 	for task := range gcdChan {
@@ -42,14 +49,13 @@ func gcdProc(gcdChan <-chan gcdTask, moduli []big.Int, collisions chan<- Collisi
 		}
 		wg.Add(1)
 		if gcd.Cmp(modulus) == 0 {
-			go findGCD(&wg, moduli, task.i, collisions)
+			go findGCD(wg, moduli, task.i, collisions)
 		} else {
-			go findDivisors(&wg, moduli, task.i, gcd, collisions)
+			go findDivisors(wg, moduli, task.i, gcd, collisions)
 			gcd = new(big.Int)
 		}
 	}
-	wg.Wait()
-	close(collisions)
+	wg.Done()
 }
 
 // Tests the candidate (i) against all other moduli
