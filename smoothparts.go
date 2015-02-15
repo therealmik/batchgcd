@@ -10,7 +10,7 @@ import (
 func productTreeLevel(input []*gmp.Int, output []*gmp.Int, wg *sync.WaitGroup, start, step int) {
 	for i := start; i < (len(input) / 2); i += step {
 		j := i * 2
-		output[i] = gmp.NewInt(0).Mul(input[j], input[j+1])
+		output[i] = new(gmp.Int).Mul(input[j], input[j+1])
 	}
 	wg.Done()
 }
@@ -19,7 +19,7 @@ func productTreeLevel(input []*gmp.Int, output []*gmp.Int, wg *sync.WaitGroup, s
 func remainderTreeLevel(tree [][]*gmp.Int, level int, wg *sync.WaitGroup, start, step int) {
 	prevLevel := tree[level+1]
 	thisLevel := tree[level]
-	tmp := gmp.NewInt(0)
+	tmp := new(gmp.Int)
 
 	for i := start; i < len(thisLevel); i += step {
 		x := thisLevel[i]
@@ -32,7 +32,7 @@ func remainderTreeLevel(tree [][]*gmp.Int, level int, wg *sync.WaitGroup, start,
 
 // For each input modulus 'x' and remainderTree parent 'y', compute z = (y%(x*x))/x; gcd(z, x)
 func remainderTreeFinal(lastLevel, moduli []*gmp.Int, output chan<- Collision, wg *sync.WaitGroup, start, step int) {
-	tmp := gmp.NewInt(0)
+	tmp := new(gmp.Int)
 
 	for i := start; i < len(moduli); i += step {
 		modulus := moduli[i]
@@ -41,14 +41,13 @@ func remainderTreeFinal(lastLevel, moduli []*gmp.Int, output chan<- Collision, w
 		tmp.Rem(y, tmp)
 		tmp.Quo(tmp, modulus)
 		if tmp.GCD(nil, nil, tmp, modulus).BitLen() != 1 {
-			q := gmp.NewInt(0)
-			q.Quo(modulus, tmp)
+			q := new(gmp.Int).Quo(modulus, tmp)
 			output <- Collision{
 				Modulus: modulus,
 				P:       tmp,
 				Q:       q,
 			}
-			tmp = gmp.NewInt(0)
+			tmp = new(gmp.Int)
 		}
 	}
 	wg.Done()
