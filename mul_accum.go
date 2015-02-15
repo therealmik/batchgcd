@@ -1,13 +1,13 @@
 package batchgcd
 
 import (
-	"math/big"
+	"github.com/ncw/gmp"
 	"runtime"
 	"sync"
 )
 
 type gcdTask struct {
-	accum *big.Int
+	accum *gmp.Int
 	i     int
 }
 
@@ -18,8 +18,8 @@ type gcdTask struct {
 // If there are no collisions, this algorithm isn't parallel at all.
 // If we get a GCD that is the same as the modulus, we do a manual scan for either colliding Q or identical moduli
 // If we get a GCD lower than the modulus, we have one private key, then do a manual scan for others.
-func MulAccumGCD(moduli []big.Int, collisions chan<- Collision) {
-	accum := big.NewInt(1)
+func MulAccumGCD(moduli []*gmp.Int, collisions chan<- Collision) {
+	accum := gmp.NewInt(1)
 	var wg sync.WaitGroup
 	nThreads := runtime.NumCPU()
 
@@ -31,18 +31,18 @@ func MulAccumGCD(moduli []big.Int, collisions chan<- Collision) {
 
 	for i := 0; i < len(moduli); i++ {
 		gcdChan <- gcdTask{accum, i}
-		accum = new(big.Int).Mul(accum, &moduli[i])
+		accum = gmp.NewInt(0).Mul(accum, moduli[i])
 	}
 	close(gcdChan)
 	wg.Wait()
 	close(collisions)
 }
 
-func gcdProc(gcdChan <-chan gcdTask, moduli []big.Int, collisions chan<- Collision, wg *sync.WaitGroup) {
-	gcd := new(big.Int)
+func gcdProc(gcdChan <-chan gcdTask, moduli []*gmp.Int, collisions chan<- Collision, wg *sync.WaitGroup) {
+	gcd := gmp.NewInt(0)
 
 	for task := range gcdChan {
-		modulus := &moduli[task.i]
+		modulus := moduli[task.i]
 		gcd.GCD(nil, nil, task.accum, modulus)
 		if gcd.BitLen() == 1 {
 			continue
@@ -52,17 +52,17 @@ func gcdProc(gcdChan <-chan gcdTask, moduli []big.Int, collisions chan<- Collisi
 			go findGCD(wg, moduli, task.i, collisions)
 		} else {
 			go findDivisors(wg, moduli, task.i, gcd, collisions)
-			gcd = new(big.Int)
+			gcd = gmp.NewInt(0)
 		}
 	}
 	wg.Done()
 }
 
 // Tests the candidate (i) against all other moduli
-func findDivisors(wg *sync.WaitGroup, moduli []big.Int, i int, gcd *big.Int, collisions chan<- Collision) {
-	m := &moduli[i]
-	q := new(big.Int)
-	r := new(big.Int)
+func findDivisors(wg *sync.WaitGroup, moduli []*gmp.Int, i int, gcd *gmp.Int, collisions chan<- Collision) {
+	m := moduli[i]
+	q := gmp.NewInt(0)
+	r := gmp.NewInt(0)
 
 	q.Quo(m, gcd)
 	collisions <- Collision{
@@ -70,10 +70,10 @@ func findDivisors(wg *sync.WaitGroup, moduli []big.Int, i int, gcd *big.Int, col
 		P:       gcd,
 		Q:       q,
 	}
-	q = new(big.Int)
+	q = gmp.NewInt(0)
 
 	for j := 0; j < i; j++ {
-		n := &moduli[j]
+		n := moduli[j]
 		q.QuoRem(n, gcd, r)
 		if r.BitLen() == 0 {
 			collisions <- Collision{
@@ -82,18 +82,18 @@ func findDivisors(wg *sync.WaitGroup, moduli []big.Int, i int, gcd *big.Int, col
 				Q:       q,
 			}
 		}
-		q = new(big.Int)
+		q = gmp.NewInt(0)
 	}
 	wg.Done()
 }
 
-func findGCD(wg *sync.WaitGroup, moduli []big.Int, i int, collisions chan<- Collision) {
-	m := &moduli[i]
-	q := new(big.Int)
-	gcd := new(big.Int)
+func findGCD(wg *sync.WaitGroup, moduli []*gmp.Int, i int, collisions chan<- Collision) {
+	m := moduli[i]
+	q := gmp.NewInt(0)
+	gcd := gmp.NewInt(0)
 
 	for j := 0; j < i; j++ {
-		n := &moduli[j]
+		n := moduli[j]
 
 		if gcd.GCD(nil, nil, m, n).BitLen() != 1 {
 			q.Quo(m, gcd)
@@ -102,7 +102,7 @@ func findGCD(wg *sync.WaitGroup, moduli []big.Int, i int, collisions chan<- Coll
 				P:       gcd,
 				Q:       q,
 			}
-			q = new(big.Int)
+			q = gmp.NewInt(0)
 
 			q.Quo(n, gcd)
 			collisions <- Collision{
@@ -110,9 +110,9 @@ func findGCD(wg *sync.WaitGroup, moduli []big.Int, i int, collisions chan<- Coll
 				P:       gcd,
 				Q:       q,
 			}
-			q = new(big.Int)
+			q = gmp.NewInt(0)
 
-			gcd = new(big.Int)
+			gcd = gmp.NewInt(0)
 		}
 	}
 	wg.Done()

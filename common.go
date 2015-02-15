@@ -2,13 +2,13 @@ package batchgcd
 
 import (
 	"fmt"
-	"math/big"
+	"github.com/ncw/gmp"
 )
 
 type Collision struct {
-	Modulus *big.Int
-	P       *big.Int
-	Q       *big.Int
+	Modulus *gmp.Int
+	P       *gmp.Int
+	Q       *gmp.Int
 }
 
 func (x Collision) HavePrivate() bool {
@@ -31,7 +31,7 @@ func (x Collision) Test() bool {
 	if !x.HavePrivate() {
 		return true
 	}
-	n := new(big.Int)
+	n := gmp.NewInt(0)
 	n.Mul(x.P, x.Q)
 	return n.Cmp(x.Modulus) == 0
 }

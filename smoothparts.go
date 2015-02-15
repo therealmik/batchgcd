@@ -1,29 +1,29 @@
 package batchgcd
 
 import (
-	"math/big"
+	"github.com/ncw/gmp"
 	"runtime"
 	"sync"
 )
 
 // Multiply sets of two adjacent inputs, placing into a single output
-func productTreeLevel(input []big.Int, output []big.Int, wg *sync.WaitGroup, start, step int) {
+func productTreeLevel(input []*gmp.Int, output []*gmp.Int, wg *sync.WaitGroup, start, step int) {
 	for i := start; i < (len(input) / 2); i += step {
 		j := i * 2
-		output[i].Mul(&input[j], &input[j+1])
+		output[i] = gmp.NewInt(0).Mul(input[j], input[j+1])
 	}
 	wg.Done()
 }
 
 // For each productTree node 'x', and remainderTree parent 'y', compute y%(x*x)
-func remainderTreeLevel(tree [][]big.Int, level int, wg *sync.WaitGroup, start, step int) {
+func remainderTreeLevel(tree [][]*gmp.Int, level int, wg *sync.WaitGroup, start, step int) {
 	prevLevel := tree[level+1]
 	thisLevel := tree[level]
-	tmp := new(big.Int)
+	tmp := gmp.NewInt(0)
 
 	for i := start; i < len(thisLevel); i += step {
-		x := &thisLevel[i]
-		y := &prevLevel[i/2]
+		x := thisLevel[i]
+		y := prevLevel[i/2]
 		tmp.Mul(x, x)
 		x.Rem(y, tmp)
 	}
@@ -31,24 +31,24 @@ func remainderTreeLevel(tree [][]big.Int, level int, wg *sync.WaitGroup, start, 
 }
 
 // For each input modulus 'x' and remainderTree parent 'y', compute z = (y%(x*x))/x; gcd(z, x)
-func remainderTreeFinal(lastLevel, moduli []big.Int, output chan<- Collision, wg *sync.WaitGroup, start, step int) {
-	tmp := new(big.Int)
+func remainderTreeFinal(lastLevel, moduli []*gmp.Int, output chan<- Collision, wg *sync.WaitGroup, start, step int) {
+	tmp := gmp.NewInt(0)
 
 	for i := start; i < len(moduli); i += step {
-		modulus := &moduli[i]
-		y := &lastLevel[i/2]
+		modulus := moduli[i]
+		y := lastLevel[i/2]
 		tmp.Mul(modulus, modulus)
 		tmp.Rem(y, tmp)
 		tmp.Quo(tmp, modulus)
 		if tmp.GCD(nil, nil, tmp, modulus).BitLen() != 1 {
-			q := new(big.Int)
+			q := gmp.NewInt(0)
 			q.Quo(modulus, tmp)
 			output <- Collision{
 				Modulus: modulus,
 				P:       tmp,
 				Q:       q,
 			}
-			tmp = new(big.Int)
+			tmp = gmp.NewInt(0)
 		}
 	}
 	wg.Done()
@@ -56,7 +56,7 @@ func remainderTreeFinal(lastLevel, moduli []big.Int, output chan<- Collision, wg
 
 // Implementation of D.J. Bernstein's "How to find smooth parts of integers"
 // http://cr.yp.to/papers.html#smoothparts
-func SmoothPartsGCD(moduli []big.Int, output chan<- Collision) {
+func SmoothPartsGCD(moduli []*gmp.Int, output chan<- Collision) {
 	defer close(output)
 	if len(moduli) < 2 {
 		return
@@ -65,9 +65,9 @@ func SmoothPartsGCD(moduli []big.Int, output chan<- Collision) {
 	// Create a tree, each level being ceil(n/2) in size, where
 	// n is the size of the level below.  The top level is size 1,
 	// the bottom level is the input moduli
-	tree := make([][]big.Int, 0)
+	tree := make([][]*gmp.Int, 0)
 	for n := (len(moduli) + 1) / 2; ; n = (n + 1) / 2 {
-		tree = append(tree, make([]big.Int, n))
+		tree = append(tree, make([]*gmp.Int, n))
 		if n == 1 {
 			break
 		}
