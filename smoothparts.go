@@ -1,5 +1,13 @@
 package batchgcd
 
+// NOTE: This code is substantially similar to fastgcd available at
+// https://factorable.net/ - written by Nadia Heninger and J. Alex Halderman,
+// which was used as a reference prior to writing.
+// While I have put a substantial amount of my own design into this, it may
+// still be a derivative work.
+// To be safe, this source file should be considered licensed under the GNU GPL v3
+// unless they grant extra permission.
+
 import (
 	"github.com/ncw/gmp"
 	"runtime"
