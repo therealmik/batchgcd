@@ -17,7 +17,7 @@ func MulAccumGCD(moduli []*gmp.Int, collisions chan<- Collision) {
 	gcd := new(gmp.Int)
 	var wg sync.WaitGroup
 
-	for i, modulus := range(moduli) {
+	for i, modulus := range moduli {
 		gcd.GCD(nil, nil, accum, modulus)
 		if gcd.BitLen() != 1 {
 			wg.Add(1)
