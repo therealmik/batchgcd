@@ -10,6 +10,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 )
 
 const (
@@ -64,7 +65,7 @@ func main() {
 		if !compromised.Test() {
 			log.Fatal("Test failed on ", compromised)
 		}
-		fmt.Println(compromised)
+		fmt.Println(compromised.Csv())
 	}
 	log.Print("Finished.")
 }
@@ -80,7 +81,9 @@ func loadModuli(moduli []*gmp.Int, filename string) []*gmp.Int {
 	scanner := bufio.NewScanner(fp)
 	for scanner.Scan() {
 		m := gmp.NewInt(0)
-		s := scanner.Text()
+
+		splitModuli := strings.SplitN(scanner.Text(), ",", 2)
+		s := splitModuli[0] // Accept CSV moduli, so long as modulus is first column
 
 		// Dedupe
 		if _, ok := seen[s]; ok {
@@ -89,7 +92,7 @@ func loadModuli(moduli []*gmp.Int, filename string) []*gmp.Int {
 			seen[s] = struct{}{}
 		}
 
-		if _, ok := m.SetString(scanner.Text(), MODULI_BASE); !ok {
+		if _, ok := m.SetString(s, MODULI_BASE); !ok {
 			log.Fatal("Invalid modulus in filename ", filename, ": ", scanner.Text())
 		}
 		moduli = append(moduli, m)
@@ -99,18 +102,19 @@ func loadModuli(moduli []*gmp.Int, filename string) []*gmp.Int {
 
 func uniqifyCollisions(in <-chan batchgcd.Collision) chan batchgcd.Collision {
 	out := make(chan batchgcd.Collision)
-	go func() {
-		seen := make(map[string]struct{})
-		for c := range in {
-			s := c.String()
-			if _, ok := seen[s]; ok {
-				continue
-			}
-			seen[s] = struct{}{}
-			out <- c
-		}
-		close(out)
-
-	}()
+	go uniqifyProc(in, out)
 	return out
+}
+
+func uniqifyProc(in <-chan batchgcd.Collision, out chan<- batchgcd.Collision) {
+	seen := make(map[string]struct{})
+	for c := range in {
+		s := c.String()
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out <- c
+	}
+	close(out)
 }
