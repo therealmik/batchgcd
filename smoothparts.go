@@ -1,5 +1,11 @@
 package batchgcd
 
+// NOTE: This code was written with fastgcd available at https://factorable.net/
+// as a reference, which was written by Nadia Heninger and J. Alex Halderman.
+// I have put a substantial amount of my own design into this, and they do not
+// claim it as a derivative work.
+// I thank them for their original code and paper.
+
 import (
 	"github.com/ncw/gmp"
 	"runtime"
