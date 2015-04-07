@@ -35,3 +35,11 @@ func (x Collision) Test() bool {
 	n.Mul(x.P, x.Q)
 	return n.Cmp(x.Modulus) == 0
 }
+
+func (x Collision) Csv() string {
+	if x.P.Cmp(x.Q) < 0 {
+		return fmt.Sprintf("%x,%x,%x", x.Modulus, x.P, x.Q)
+	} else {
+		return fmt.Sprintf("%x,%x,%x", x.Modulus, x.Q, x.P)
+	}
+}
