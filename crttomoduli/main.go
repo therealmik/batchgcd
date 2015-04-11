@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/rsa"
-	"crypto/x509"
+	"github.com/therealmik/x509"
 	"encoding/base64"
 	"encoding/pem"
 	"flag"
@@ -83,7 +83,7 @@ func printModuli(ch <-chan []byte) {
 	for blob := range ch {
 		cert, err := x509.ParseCertificate(blob)
 		if err != nil {
-			log.Printf("Error in cert %v", err)
+			log.Printf("Error in cert %v: %s", err, base64.StdEncoding.EncodeToString(blob))
 			continue
 		}
 		if cert.PublicKeyAlgorithm != x509.RSA {
