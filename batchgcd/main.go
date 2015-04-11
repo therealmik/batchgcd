@@ -18,12 +18,25 @@ const (
 )
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
-var algorithmName = flag.String("algorithm", "smoothparts", "mulaccum|pairwise|smoothparts")
+var algorithmName = flag.String("algorithm", "smoothparts", "mulaccum|pairwise|smoothparts|smoothparts_lowmem")
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	log.SetOutput(os.Stderr)
 	flag.Parse()
+
+	if len(flag.Args()) == 0 {
+		log.Fatal("No files specified")
+	}
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
 
 	var f func([]*gmp.Int, chan<- batchgcd.Collision)
 
@@ -34,27 +47,17 @@ func main() {
 		f = batchgcd.MulAccumGCD
 	case "smoothparts":
 		f = batchgcd.SmoothPartsGCD
+	case "smoothparts_lowmem":
+		doLowMem()
+		return
 	default:
 		log.Fatal("Invalid algorithm: ", *algorithmName)
-	}
-
-	if len(flag.Args()) == 0 {
-		log.Fatal("No files specified")
 	}
 
 	moduli := make([]*gmp.Int, 0)
 	for _, filename := range flag.Args() {
 		log.Print("Loading moduli from ", filename)
 		moduli = loadModuli(moduli, filename)
-	}
-
-	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
 	}
 
 	ch := make(chan batchgcd.Collision, 256)
@@ -70,7 +73,37 @@ func main() {
 	log.Print("Finished.")
 }
 
+func doLowMem() {
+	moduli := make(chan *gmp.Int, 1)
+	collisions := make(chan batchgcd.Collision, 1)
+
+	log.Print("Executing...")
+	go batchgcd.LowMemSmoothPartsGCD(moduli, collisions)
+
+	for _, filename := range flag.Args() {
+		log.Print("Reading moduli from ", filename)
+		readModuli(moduli, filename)
+	}
+
+	for compromised := range uniqifyCollisions(collisions) {
+		if !compromised.Test() {
+			log.Fatal("Test failed on ", compromised)
+		}
+		fmt.Println(compromised.Csv())
+	}
+	log.Print("Finished.")
+}
+
 func loadModuli(moduli []*gmp.Int, filename string) []*gmp.Int {
+	ch := make(chan *gmp.Int, 1)
+	go readModuli(ch, filename)
+	for m := range ch {
+		moduli = append(moduli, m)
+	}
+	return moduli
+}
+
+func readModuli(ch chan *gmp.Int, filename string) {
 	fp, err := os.Open(filename)
 	if err != nil {
 		log.Fatal(err)
@@ -95,9 +128,9 @@ func loadModuli(moduli []*gmp.Int, filename string) []*gmp.Int {
 		if _, ok := m.SetString(s, MODULI_BASE); !ok {
 			log.Fatal("Invalid modulus in filename ", filename, ": ", scanner.Text())
 		}
-		moduli = append(moduli, m)
+		ch <- m
 	}
-	return moduli
+	close(ch)
 }
 
 func uniqifyCollisions(in <-chan batchgcd.Collision) chan batchgcd.Collision {
