@@ -74,8 +74,8 @@ func main() {
 }
 
 func doLowMem() {
-	moduli := make(chan *gmp.Int, 0)
-	collisions := make(chan batchgcd.Collision, 0)
+	moduli := make(chan *gmp.Int, 1)
+	collisions := make(chan batchgcd.Collision, 1)
 
 	log.Print("Executing...")
 	go batchgcd.LowMemSmoothPartsGCD(moduli, collisions)
@@ -83,6 +83,7 @@ func doLowMem() {
 	for _, filename := range flag.Args() {
 		log.Print("Reading moduli from ", filename)
 		readModuli(moduli, filename)
+		log.Print("Done reading moduli from ", filename)
 	}
 	close(moduli)
 
@@ -117,7 +118,7 @@ func readModuli(ch chan *gmp.Int, filename string) {
 	seen := make(map[string]struct{})
 	scanner := bufio.NewScanner(fp)
 	for scanner.Scan() {
-		m := gmp.NewInt(0)
+		m := new(gmp.Int)
 
 		splitModuli := strings.SplitN(scanner.Text(), ",", 2)
 		s := splitModuli[0] // Accept CSV moduli, so long as modulus is first column

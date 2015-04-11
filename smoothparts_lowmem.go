@@ -37,13 +37,13 @@ func tmpfileReadWriter(inChan chan *gmp.Int, outChan chan *gmp.Int, prefix strin
 	}
 
 	var readCount uint64
-	m := gmp.NewInt(0)
+	m := new(gmp.Int)
 	dec := gob.NewDecoder(tmpFile)
 	var e error
 	for e = dec.Decode(m); e == nil; e = dec.Decode(m) {
 		readCount += 1
 		outChan <- m
-		m = gmp.NewInt(0)
+		m = new(gmp.Int)
 	}
 
 	if e != io.EOF {
@@ -58,7 +58,7 @@ func tmpfileReadWriter(inChan chan *gmp.Int, outChan chan *gmp.Int, prefix strin
 
 // Multiply sets of two adjacent inputs, placing into a single output
 func lowmemProductTreeLevel(prefix string, level int, input chan *gmp.Int, channels []chan *gmp.Int, finalOutput chan<- Collision) {
-	resultChan := make(chan *gmp.Int, 0)
+	resultChan := make(chan *gmp.Int, 1)
 	defer close(resultChan)
 
 	hold := <-input
@@ -69,21 +69,21 @@ func lowmemProductTreeLevel(prefix string, level int, input chan *gmp.Int, chann
 		return
 	}
 
-	fileWriteChan := make(chan *gmp.Int, 0)
-	fileReadChan := make(chan *gmp.Int, 0)
+	fileWriteChan := make(chan *gmp.Int, 1)
+	fileReadChan := make(chan *gmp.Int, 1)
 	go tmpfileReadWriter(fileWriteChan, fileReadChan, prefix, "product", level)
 	fileWriteChan <- hold
 	fileWriteChan <- m
 
 	channels = append(channels, fileReadChan)
 	go lowmemProductTreeLevel(prefix, level+1, resultChan, channels, finalOutput)
-	resultChan <- gmp.NewInt(0).Mul(hold, m)
+	resultChan <- new(gmp.Int).Mul(hold, m)
 	hold = nil
 
 	for m = range input {
 		fileWriteChan <- m
 		if hold != nil {
-			resultChan <- gmp.NewInt(0).Mul(hold, m)
+			resultChan <- new(gmp.Int).Mul(hold, m)
 			hold = nil
 		} else {
 			hold = m
@@ -99,11 +99,11 @@ func lowmemProductTreeLevel(prefix string, level int, input chan *gmp.Int, chann
 
 // For each productTree node 'x', and remainderTree parent 'y', compute y%(x*x)
 func lowmemRemainderTreeLevel(input chan *gmp.Int, productTree []chan *gmp.Int, finalOutput chan<- Collision) {
-	tmp := gmp.NewInt(0)
+	tmp := new(gmp.Int)
 
 	products := productTree[len(productTree)-1]
 	productTree = productTree[:len(productTree)-1]
-	output := make(chan *gmp.Int, 0)
+	output := make(chan *gmp.Int, 1)
 	defer close(output)
 
 	if len(productTree) == 0 {
@@ -147,13 +147,13 @@ func lowmemRemainderTreeFinal(input, moduli chan *gmp.Int, output chan<- Collisi
 			tmp.Rem(y, tmp)
 			tmp.Quo(tmp, modulus)
 			if tmp.GCD(nil, nil, tmp, modulus).BitLen() != 1 {
-				q := gmp.NewInt(0).Quo(modulus, tmp)
+				q := new(gmp.Int).Quo(modulus, tmp)
 				output <- Collision{
 					Modulus: modulus,
 					P:       tmp,
 					Q:       q,
 				}
-				tmp = gmp.NewInt(0)
+				tmp = new(gmp.Int)
 			}
 		}
 	}
