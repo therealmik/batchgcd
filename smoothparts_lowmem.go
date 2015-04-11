@@ -7,13 +7,13 @@ package batchgcd
 // I thank them for their original code and paper.
 
 import (
+	"encoding/gob"
 	"fmt"
 	"github.com/ncw/gmp"
+	"io"
 	"log"
 	"os"
 	"time"
-	"encoding/gob"
-	"io"
 )
 
 func tmpfileReadWriter(inChan chan *gmp.Int, outChan chan *gmp.Int, prefix string, typ string, level int) {
@@ -58,23 +58,25 @@ func tmpfileReadWriter(inChan chan *gmp.Int, outChan chan *gmp.Int, prefix strin
 
 // Multiply sets of two adjacent inputs, placing into a single output
 func lowmemProductTreeLevel(prefix string, level int, input chan *gmp.Int, channels []chan *gmp.Int, finalOutput chan<- Collision) {
-	fileWriteChan := make(chan *gmp.Int, 1)
-	fileReadChan := make(chan *gmp.Int, 1)
-	resultChan := make(chan *gmp.Int, 1)
+	resultChan := make(chan *gmp.Int, 0)
+	defer close(resultChan)
 
 	hold := <-input
 	m, ok := <-input
 	if !ok {
-		go lowmemRemainderTreeLevel(level-1, resultChan, channels, finalOutput)
+		go lowmemRemainderTreeLevel(resultChan, channels, finalOutput)
 		resultChan <- hold
 		return
 	}
 
+	fileWriteChan := make(chan *gmp.Int, 0)
+	fileReadChan := make(chan *gmp.Int, 0)
 	go tmpfileReadWriter(fileWriteChan, fileReadChan, prefix, "product", level)
 	fileWriteChan <- hold
 	fileWriteChan <- m
 
-	go lowmemProductTreeLevel(prefix, level+1, resultChan, append(channels, fileReadChan), finalOutput)
+	channels = append(channels, fileReadChan)
+	go lowmemProductTreeLevel(prefix, level+1, resultChan, channels, finalOutput)
 	resultChan <- gmp.NewInt(0).Mul(hold, m)
 	hold = nil
 
@@ -93,30 +95,28 @@ func lowmemProductTreeLevel(prefix string, level int, input chan *gmp.Int, chann
 	if hold != nil {
 		resultChan <- hold
 	}
-	close(resultChan)
 }
 
 // For each productTree node 'x', and remainderTree parent 'y', compute y%(x*x)
-func lowmemRemainderTreeLevel(level int, input chan *gmp.Int, productTree []chan *gmp.Int, finalOutput chan<- Collision) {
+func lowmemRemainderTreeLevel(input chan *gmp.Int, productTree []chan *gmp.Int, finalOutput chan<- Collision) {
 	tmp := gmp.NewInt(0)
 
 	products := productTree[len(productTree)-1]
 	productTree = productTree[:len(productTree)-1]
-	output := make(chan *gmp.Int, 1)
+	output := make(chan *gmp.Int, 0)
+	defer close(output)
 
-	if level != 1 {
-		go lowmemRemainderTreeLevel(level-1, output, productTree, finalOutput)
+	if len(productTree) == 0 {
+		lowmemRemainderTreeFinal(input, products, finalOutput)
+		return
 	} else {
-		if len(productTree) != 0 {
-			log.Panicf("Still have %d product tree levels on stack", len(productTree))
-		}
-		go lowmemRemainderTreeFinal(output, products, finalOutput)
+		go lowmemRemainderTreeLevel(output, productTree, finalOutput)
 	}
 
 	for y := range input {
 		x, ok := <-products
 		if !ok {
-			log.Panic("Expecting more products")
+			log.Panicf("Expecting more products")
 		}
 		tmp.Mul(x, x)
 		x.Rem(y, tmp)
@@ -129,11 +129,11 @@ func lowmemRemainderTreeLevel(level int, input chan *gmp.Int, productTree []chan
 			output <- x
 		}
 	}
-	close(output)
 }
 
 // For each input modulus 'x' and remainderTree parent 'y', compute z = (y%(x*x))/x; gcd(z, x)
 func lowmemRemainderTreeFinal(input, moduli chan *gmp.Int, output chan<- Collision) {
+	defer close(output)
 	tmp := new(gmp.Int)
 
 	for y := range input {
@@ -157,7 +157,6 @@ func lowmemRemainderTreeFinal(input, moduli chan *gmp.Int, output chan<- Collisi
 			}
 		}
 	}
-	close(output)
 }
 
 // Implementation of D.J. Bernstein's "How to find smooth parts of integers"

@@ -74,8 +74,8 @@ func main() {
 }
 
 func doLowMem() {
-	moduli := make(chan *gmp.Int, 1)
-	collisions := make(chan batchgcd.Collision, 1)
+	moduli := make(chan *gmp.Int, 0)
+	collisions := make(chan batchgcd.Collision, 0)
 
 	log.Print("Executing...")
 	go batchgcd.LowMemSmoothPartsGCD(moduli, collisions)
@@ -84,6 +84,7 @@ func doLowMem() {
 		log.Print("Reading moduli from ", filename)
 		readModuli(moduli, filename)
 	}
+	close(moduli)
 
 	for compromised := range uniqifyCollisions(collisions) {
 		if !compromised.Test() {
@@ -96,7 +97,10 @@ func doLowMem() {
 
 func loadModuli(moduli []*gmp.Int, filename string) []*gmp.Int {
 	ch := make(chan *gmp.Int, 1)
-	go readModuli(ch, filename)
+	go func() {
+		readModuli(ch, filename)
+		close(ch)
+	}()
 	for m := range ch {
 		moduli = append(moduli, m)
 	}
@@ -130,7 +134,6 @@ func readModuli(ch chan *gmp.Int, filename string) {
 		}
 		ch <- m
 	}
-	close(ch)
 }
 
 func uniqifyCollisions(in <-chan batchgcd.Collision) chan batchgcd.Collision {
