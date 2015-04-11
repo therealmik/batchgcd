@@ -15,6 +15,7 @@ import (
 
 const (
 	MODULI_BASE = 16 // Hex
+	GCCOUNT     = 250000
 )
 
 var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
@@ -114,10 +115,17 @@ func readModuli(ch chan *gmp.Int, filename string) {
 		log.Fatal(err)
 	}
 	defer fp.Close()
+	defer runtime.GC()
 
+	var count uint64
 	seen := make(map[string]struct{})
 	scanner := bufio.NewScanner(fp)
 	for scanner.Scan() {
+		count += 1
+		if count%GCCOUNT == 0 {
+			log.Print("Moduli read: ", count)
+			runtime.GC()
+		}
 		m := new(gmp.Int)
 
 		splitModuli := strings.SplitN(scanner.Text(), ",", 2)

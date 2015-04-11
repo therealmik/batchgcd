@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"time"
+	"runtime"
 )
 
 func tmpfileReadWriter(inChan chan *gmp.Int, outChan chan *gmp.Int, prefix string, typ string, level int) {
@@ -58,7 +59,7 @@ func tmpfileReadWriter(inChan chan *gmp.Int, outChan chan *gmp.Int, prefix strin
 
 // Multiply sets of two adjacent inputs, placing into a single output
 func lowmemProductTreeLevel(prefix string, level int, input chan *gmp.Int, channels []chan *gmp.Int, finalOutput chan<- Collision) {
-	resultChan := make(chan *gmp.Int, 1)
+	resultChan := make(chan *gmp.Int, 0)
 	defer close(resultChan)
 
 	hold := <-input
@@ -100,10 +101,12 @@ func lowmemProductTreeLevel(prefix string, level int, input chan *gmp.Int, chann
 // For each productTree node 'x', and remainderTree parent 'y', compute y%(x*x)
 func lowmemRemainderTreeLevel(input chan *gmp.Int, productTree []chan *gmp.Int, finalOutput chan<- Collision) {
 	tmp := new(gmp.Int)
+	runtime.GC()
+	defer runtime.GC()
 
 	products := productTree[len(productTree)-1]
 	productTree = productTree[:len(productTree)-1]
-	output := make(chan *gmp.Int, 1)
+	output := make(chan *gmp.Int, 0)
 	defer close(output)
 
 	if len(productTree) == 0 {
