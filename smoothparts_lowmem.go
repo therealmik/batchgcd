@@ -7,15 +7,40 @@ package batchgcd
 // I thank them for their original code and paper.
 
 import (
-	"encoding/gob"
 	"fmt"
 	"github.com/ncw/gmp"
 	"io"
 	"log"
 	"os"
-	"time"
 	"runtime"
+	"time"
 )
+
+func encodeLength(buf []byte, length int) {
+	buf[0] = byte(length >> 56)
+	buf[1] = byte(length >> 48)
+	buf[2] = byte(length >> 40)
+	buf[3] = byte(length >> 32)
+	buf[4] = byte(length >> 24)
+	buf[5] = byte(length >> 16)
+	buf[6] = byte(length >> 8)
+	buf[7] = byte(length)
+}
+
+func decodeLength(buf []byte) int {
+	var ret int
+
+	ret |= int(buf[0]) << 56
+	ret |= int(buf[1]) << 48
+	ret |= int(buf[2]) << 40
+	ret |= int(buf[3]) << 32
+	ret |= int(buf[4]) << 24
+	ret |= int(buf[5]) << 16
+	ret |= int(buf[6]) << 8
+	ret |= int(buf[7])
+
+	return ret
+}
 
 func tmpfileReadWriter(inChan chan *gmp.Int, outChan chan *gmp.Int, prefix string, typ string, level int) {
 	filename := fmt.Sprintf("%s-%s-%d", typ, prefix, level)
@@ -24,13 +49,19 @@ func tmpfileReadWriter(inChan chan *gmp.Int, outChan chan *gmp.Int, prefix strin
 		log.Panic(err)
 	}
 
+	length := make([]byte, 8)
+
 	var writeCount uint64
-	enc := gob.NewEncoder(tmpFile)
 	for inData := range inChan {
-		writeCount += 1
-		if e := enc.Encode(inData); err != nil {
-			log.Panic(e)
+		buf := inData.Bytes()
+		encodeLength(length, len(buf))
+		if _, err := tmpFile.Write(length); err != nil {
+			log.Panic(err)
 		}
+		if _, err := tmpFile.Write(buf); err != nil {
+			log.Panic(err)
+		}
+		writeCount += 1
 	}
 
 	if newOffset, e := tmpFile.Seek(0, 0); e != nil || newOffset != 0 {
@@ -39,17 +70,22 @@ func tmpfileReadWriter(inChan chan *gmp.Int, outChan chan *gmp.Int, prefix strin
 
 	var readCount uint64
 	m := new(gmp.Int)
-	dec := gob.NewDecoder(tmpFile)
-	var e error
-	for e = dec.Decode(m); e == nil; e = dec.Decode(m) {
+	for {
+		if _, e := io.ReadFull(tmpFile, length); e != nil {
+			if e == io.EOF {
+				break
+			}
+			log.Panic(e)
+		}
+		buf := make([]byte, decodeLength(length))
+		if _, e := io.ReadFull(tmpFile, buf); e != nil {
+			log.Panic(e)
+		}
 		readCount += 1
-		outChan <- m
+		outChan <- m.SetBytes(buf)
 		m = new(gmp.Int)
 	}
 
-	if e != io.EOF {
-		log.Panic(e)
-	}
 	if writeCount != readCount {
 		log.Panicf("Didn't write as many as we read: write=%v read=%v", writeCount, readCount)
 	}
