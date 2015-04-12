@@ -7,14 +7,27 @@ package batchgcd
 // I thank them for their original code and paper.
 
 import (
-	"fmt"
 	"github.com/ncw/gmp"
 	"io"
+	"io/ioutil"
 	"log"
-	"os"
 	"runtime"
-	"time"
+	"syscall"
 )
+
+type fileChannels struct {
+	writeChan chan *gmp.Int
+	readChan  chan *gmp.Int
+	producing bool
+}
+
+func (fch *fileChannels) StartProducing() {
+	if fch.producing {
+		return
+	}
+	close(fch.writeChan)
+	fch.producing = true
+}
 
 func encodeLength(buf []byte, length int) {
 	buf[0] = byte(length >> 56)
@@ -42,9 +55,8 @@ func decodeLength(buf []byte) int {
 	return ret
 }
 
-func tmpfileReadWriter(inChan chan *gmp.Int, outChan chan *gmp.Int, prefix string, typ string, level int) {
-	filename := fmt.Sprintf("%s-%s-%d", typ, prefix, level)
-	tmpFile, err := os.Create(filename)
+func tmpfileReadWriter(ch fileChannels) {
+	tmpFile, err := ioutil.TempFile(".", "product")
 	if err != nil {
 		log.Panic(err)
 	}
@@ -52,7 +64,7 @@ func tmpfileReadWriter(inChan chan *gmp.Int, outChan chan *gmp.Int, prefix strin
 	length := make([]byte, 8)
 
 	var writeCount uint64
-	for inData := range inChan {
+	for inData := range ch.writeChan {
 		buf := inData.Bytes()
 		encodeLength(length, len(buf))
 		if _, err := tmpFile.Write(length); err != nil {
@@ -82,20 +94,21 @@ func tmpfileReadWriter(inChan chan *gmp.Int, outChan chan *gmp.Int, prefix strin
 			log.Panic(e)
 		}
 		readCount += 1
-		outChan <- m.SetBytes(buf)
+		ch.readChan <- m.SetBytes(buf)
 		m = new(gmp.Int)
 	}
 
 	if writeCount != readCount {
 		log.Panicf("Didn't write as many as we read: write=%v read=%v", writeCount, readCount)
 	}
-	close(outChan)
+	close(ch.readChan)
+	syscall.Unlink(tmpFile.Name())
 	// tmpFile.Truncate(0);
 }
 
 // Multiply sets of two adjacent inputs, placing into a single output
-func lowmemProductTreeLevel(prefix string, level int, input chan *gmp.Int, channels []chan *gmp.Int, finalOutput chan<- Collision) {
-	resultChan := make(chan *gmp.Int, 0)
+func lowmemProductTreeLevel(input chan *gmp.Int, channels []fileChannels, finalOutput chan<- Collision) {
+	resultChan := make(chan *gmp.Int, 2)
 	defer close(resultChan)
 
 	hold := <-input
@@ -106,19 +119,21 @@ func lowmemProductTreeLevel(prefix string, level int, input chan *gmp.Int, chann
 		return
 	}
 
-	fileWriteChan := make(chan *gmp.Int, 1)
-	fileReadChan := make(chan *gmp.Int, 1)
-	go tmpfileReadWriter(fileWriteChan, fileReadChan, prefix, "product", level)
-	fileWriteChan <- hold
-	fileWriteChan <- m
+	fileChans := fileChannels{
+		writeChan: make(chan *gmp.Int, 2),
+		readChan:  make(chan *gmp.Int, 1),
+	}
+	go tmpfileReadWriter(fileChans)
+	fileChans.writeChan <- hold
+	fileChans.writeChan <- m
 
-	channels = append(channels, fileReadChan)
-	go lowmemProductTreeLevel(prefix, level+1, resultChan, channels, finalOutput)
+	channels = append(channels, fileChans)
+	go lowmemProductTreeLevel(resultChan, channels, finalOutput)
 	resultChan <- new(gmp.Int).Mul(hold, m)
 	hold = nil
 
 	for m = range input {
-		fileWriteChan <- m
+		fileChans.writeChan <- m
 		if hold != nil {
 			resultChan <- new(gmp.Int).Mul(hold, m)
 			hold = nil
@@ -127,25 +142,28 @@ func lowmemProductTreeLevel(prefix string, level int, input chan *gmp.Int, chann
 		}
 	}
 
-	close(fileWriteChan)
-
 	if hold != nil {
 		resultChan <- hold
 	}
 }
 
 // For each productTree node 'x', and remainderTree parent 'y', compute y%(x*x)
-func lowmemRemainderTreeLevel(input chan *gmp.Int, productTree []chan *gmp.Int, finalOutput chan<- Collision) {
+func lowmemRemainderTreeLevel(input chan *gmp.Int, productTree []fileChannels, finalOutput chan<- Collision) {
 	tmp := new(gmp.Int)
 	runtime.GC()
 	defer runtime.GC()
 
-	products := productTree[len(productTree)-1]
+	ch := productTree[len(productTree)-1]
 	productTree = productTree[:len(productTree)-1]
-	output := make(chan *gmp.Int, 0)
+
+	// We close the fileWriteChannel here so it kicks off reading now, instead of starting too early
+	products := ch.readChan
+
+	output := make(chan *gmp.Int, 2)
 	defer close(output)
 
 	if len(productTree) == 0 {
+		ch.StartProducing()
 		lowmemRemainderTreeFinal(input, products, finalOutput)
 		return
 	} else {
@@ -153,6 +171,7 @@ func lowmemRemainderTreeLevel(input chan *gmp.Int, productTree []chan *gmp.Int, 
 	}
 
 	for y := range input {
+		ch.StartProducing()
 		x, ok := <-products
 		if !ok {
 			log.Panicf("Expecting more products")
@@ -201,6 +220,5 @@ func lowmemRemainderTreeFinal(input, moduli chan *gmp.Int, output chan<- Collisi
 // Implementation of D.J. Bernstein's "How to find smooth parts of integers"
 // http://cr.yp.to/papers.html#smoothparts
 func LowMemSmoothPartsGCD(moduli chan *gmp.Int, output chan<- Collision) {
-	prefix := time.Now().Format(time.RFC3339Nano)
-	go lowmemProductTreeLevel(prefix, 1, moduli, nil, output)
+	go lowmemProductTreeLevel(moduli, nil, output)
 }
