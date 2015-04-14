@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"runtime"
 	"syscall"
 )
 
@@ -73,6 +72,7 @@ func tmpfileReadWriter(ch fileChannels) {
 		if _, err := tmpFile.Write(buf); err != nil {
 			log.Panic(err)
 		}
+		inData.Clear()
 		writeCount += 1
 	}
 
@@ -124,18 +124,20 @@ func lowmemProductTreeLevel(input chan *gmp.Int, channels []fileChannels, finalO
 		readChan:  make(chan *gmp.Int, 1),
 	}
 	go tmpfileReadWriter(fileChans)
-	fileChans.writeChan <- hold
-	fileChans.writeChan <- m
-
 	channels = append(channels, fileChans)
 	go lowmemProductTreeLevel(resultChan, channels, finalOutput)
 	resultChan <- new(gmp.Int).Mul(hold, m)
+
+	fileChans.writeChan <- hold
+	fileChans.writeChan <- m
+
 	hold = nil
 
 	for m = range input {
-		fileChans.writeChan <- m
 		if hold != nil {
 			resultChan <- new(gmp.Int).Mul(hold, m)
+			fileChans.writeChan <- hold
+			fileChans.writeChan <- m
 			hold = nil
 		} else {
 			hold = m
@@ -143,6 +145,7 @@ func lowmemProductTreeLevel(input chan *gmp.Int, channels []fileChannels, finalO
 	}
 
 	if hold != nil {
+		fileChans.writeChan <- hold
 		resultChan <- hold
 	}
 }
@@ -150,8 +153,6 @@ func lowmemProductTreeLevel(input chan *gmp.Int, channels []fileChannels, finalO
 // For each productTree node 'x', and remainderTree parent 'y', compute y%(x*x)
 func lowmemRemainderTreeLevel(input chan *gmp.Int, productTree []fileChannels, finalOutput chan<- Collision) {
 	tmp := new(gmp.Int)
-	runtime.GC()
-	defer runtime.GC()
 
 	ch := productTree[len(productTree)-1]
 	productTree = productTree[:len(productTree)-1]
@@ -186,6 +187,7 @@ func lowmemRemainderTreeLevel(input chan *gmp.Int, productTree []fileChannels, f
 			x.Rem(y, tmp)
 			output <- x
 		}
+		y.Clear()
 	}
 }
 
@@ -214,6 +216,7 @@ func lowmemRemainderTreeFinal(input, moduli chan *gmp.Int, output chan<- Collisi
 				tmp = new(gmp.Int)
 			}
 		}
+		y.Clear()
 	}
 }
 
